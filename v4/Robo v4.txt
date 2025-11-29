@@ -1,0 +1,69 @@
+
+import streamlit as st
+import pandas as pd
+import requests
+import time
+from io import BytesIO
+
+# Função para consultar CNPJ
+def consultar_cnpj(codigo, cnpj):
+    url = f'https://www.receitaws.com.br/v1/cnpj/{cnpj}'
+    try:
+        response = requests.get(url)
+        data = response.json()
+
+        if response.status_code == 200:
+            atividade_principal = data['atividade_principal'][0]['text'] if 'atividade_principal' in data and data['atividade_principal'] else 'N/A'
+            qsa = data.get('qsa', [])
+            if qsa:
+                qsa_info = qsa[0]
+            else:
+                qsa_info = {'nome': 'N/A', 'qual': 'N/A', 'pais_origem': 'N/A', 'nome_rep_legal': 'N/A', 'qual_rep_legal': 'N/A'}
+
+            return [codigo, data.get('nome', 'N/A'), data.get('abertura', 'N/A'), data.get('situacao', 'N/A'),
+                    data.get('logradouro', 'N/A'), data.get('bairro', 'N/A'), data.get('numero', 'N/A'),
+                    data.get('municipio', 'N/A'), data.get('uf', 'N/A'), data.get('status', 'N/A'),
+                    data.get('cep', 'N/A'), data.get('complemento', 'N/A'), data.get('email', 'N/A'),
+                    data.get('telefone', 'N/A'), atividade_principal,
+                    qsa_info.get('nome', 'N/A'), qsa_info.get('qual', 'N/A'),
+                    qsa_info.get('pais_origem', 'N/A'), qsa_info.get('nome_rep_legal', 'N/A'),
+                    qsa_info.get('qual_rep_legal', 'N/A')]
+        else:
+            return [codigo] + ['N/A'] * 19
+    except:
+        return [codigo] + ['N/A'] * 19
+
+# Interface Streamlit
+st.title("Consulta de CNPJs")
+uploaded_file = st.file_uploader("Escolha o arquivo CSV com CNPJs", type="csv")
+
+if uploaded_file:
+    base = pd.read_csv(uploaded_file, dtype='str')
+    st.write("CNPJs carregados:", base)
+
+    if st.button("Iniciar Consulta"):
+        lista = []
+        nome_colunas = ['CNPJ', 'Nome', 'Data de Abertura', 'Situação', 'Endereço', 'Bairro', 'Número', 'Cidade', 'UF', 'Status', 'cep', 'complemento', 'email', 'telefone', 'Atividade Principal',
+                        'QSA Nome', 'QSA Qual', 'QSA País de Origem', 'QSA Nome Rep Legal', 'QSA Qual Rep Legal']
+
+        progress_bar = st.progress(0)
+        total = len(base)
+        contador = 0
+
+        for i in base['CNPJ']:
+            i = str(i).zfill(14)
+            resultado = consultar_cnpj(i, i)
+            lista.append(resultado)
+            contador += 1
+            progress_bar.progress(contador / total)
+            time.sleep(1)  # Para evitar bloqueio da API
+
+        df_resultado = pd.DataFrame(lista, columns=nome_colunas)
+        st.success("Consulta concluída!")
+        st.dataframe(df_resultado)
+
+        # Botão para download do Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_resultado.to_excel(writer, index=False)
+        st.download_button(label="Baixar Excel", data=output.getvalue(), file_name="resultado_cnpjs.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
